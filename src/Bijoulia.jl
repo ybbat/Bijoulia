@@ -1,7 +1,6 @@
 module Bijoulia
 
-msg = "Hello world!"
-
-greet() = print(msg)
+include("Variables.jl")
+using .Variables: Variable
 
 end # module Bijoulia
