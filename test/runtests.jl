@@ -1,8 +1,7 @@
-using Bijoulia
-using Bijoulia.Variables
 using Test
+using Bijoulia.Variables
 
-@testset "constructors" begin
+@testset "Variable constructors" begin
     @testset "construct from float array" begin
         a = Variable([1. 2. 3.; 4. 5. 6.])
         @test a.data == [1. 2. 3.; 4. 5. 6.]
@@ -27,5 +26,21 @@ using Test
         @test a.grad == [0. 0. 0.; 0. 0. 0.; 0. 0. 0.]
         @test a.children == s
         @test a.backward == test_func
+    end
+
+    @testset "construct from scalar" begin
+        a = Variable(1.0)
+        @test a.data == 1.0
+        @test a.grad == 0.0
+        @test a.children == Set()
+        @test a.backward == Returns(nothing)
+    end
+
+    @testset "construct from other <:Real" begin
+        a = Variable(1)
+        @test a.data == 1.0
+        @test a.grad == 0.0
+        @test a.children == Set()
+        @test a.backward == Returns(nothing)
     end
 end
