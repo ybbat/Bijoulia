@@ -44,6 +44,9 @@ end
 function broadcast_dims(a, b)::Union{Array{Float64}, Float64}
     size_a = size(a)
     size_b = size(b)
+    if size_a == size_b
+        return b
+    end
 
     size_a = [i <= length(size_a) ? size_a[i] : 1 for i ∈ 1:length(size_b)]
 
@@ -54,15 +57,11 @@ function broadcast_dims(a, b)::Union{Array{Float64}, Float64}
         end
     end
 
-    if indices != []
-        summed = sum(b, dims=indices)
-        if length(summed) == 1
-            return summed[1]
-        else
-            return summed
-        end
+    summed = sum(b, dims=indices)
+    if length(summed) == 1
+        return summed[1]
     else
-        return b
+        return summed
     end
 end
 
