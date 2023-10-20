@@ -9,6 +9,9 @@ mutable struct Variable
     backward::Function
 
     function Variable(data::Array{Float64}, children::Set{Variable}, backward::Function)
+        if typeof(data) <: Vector
+            data = reshape(data, (length(data), 1))
+        end
         new(data, zeros(size(data)), children, backward)
     end
 
@@ -17,6 +20,9 @@ mutable struct Variable
     end
 
     function Variable(data::Array{Float64})
+        if typeof(data) <: Vector
+            data = reshape(data, (length(data), 1))
+        end
         new(data, zeros(size(data)), Set(), Returns(nothing))
     end
 
@@ -25,6 +31,9 @@ mutable struct Variable
     end
 
     function Variable(data::Array{<:Real}, children::Set{Variable}, backward::Function)
+        if typeof(data) <: Vector
+            data = reshape(data, (length(data), 1))
+        end
         new(convert.(Float64, data), zeros(size(data)), children, backward)
     end
 
@@ -33,6 +42,10 @@ mutable struct Variable
     end
 
     function Variable(data::Array{<:Real})
+        if typeof(data) <: Vector
+
+            data = reshape(data, (length(data), 1))
+        end
         new(convert.(Float64, data), zeros(size(data)), Set(), Returns(nothing))
     end
 
@@ -41,6 +54,7 @@ mutable struct Variable
     end
 end
 
+# TODO: allow broadcasting over Variable so all this logic isnt needed for each operation
 function broadcast_dims(a, b)::Union{Array{Float64}, Float64}
     size_a = size(a)
     size_b = size(b)
@@ -80,6 +94,37 @@ function Base.:+(a::Variable, b::Variable)
         catch
             throw(DimensionMismatch("Could not add variables of size $(size(a.data)) and $(size(b.data))"))
         end
+    end
+end
+
+function Base.:*(a::Variable, b::Variable)
+    # scalar * scalar
+    if typeof(a.data) == Float64 && typeof(b.data) == Float64
+        backward_ss(p_grad) = (a.grad += p_grad * b.data; b.grad += p_grad * a.data)
+        Variable(a.data * b.data, Set([a, b]), backward_ss)
+    # scalar * array
+    elseif typeof(a.data) == Float64 || typeof(b.data) == Float64
+        backwards_sa(p_grad) = begin
+            if typeof(a.grad) == Float64
+                a.grad += sum(p_grad .* b.data)
+                b.grad += p_grad .* a.data
+            else
+                a.grad += p_grad .* b.data
+                b.grad += sum(p_grad .* a.data)
+            end
+        end
+        Variable(a.data * b.data, Set([a, b]), backwards_sa)
+    # array * array
+    elseif last(size(a.data)) == first(size(b.data))
+        mul = a.data * b.data
+        if length(mul) == 1
+            mul = mul[1]
+        end
+        backwards_aa(p_grad) = begin
+            a.grad += p_grad * b.data'
+            b.grad += a.data' * p_grad
+        end
+        Variable(mul, Set([a, b]), backwards_aa)
     end
 end
 
