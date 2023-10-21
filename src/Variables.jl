@@ -54,6 +54,9 @@ mutable struct Variable
     end
 end
 
+function Base.show(io::IO, v::Variable)
+    print(io, "Variable(data=$(v.data), grad=$(v.grad))")
+end
 function backpropagate(root::Variable)
     if typeof(root) <: Array
         fill!(root.grad, one(Float64))
@@ -171,9 +174,18 @@ function Base.:-(a::Variable)
     Variable(-a.data, Set([a]), backward)
 end
 
+function Base.:-(a::Variable, b::Variable)
+    a + (-b)
+end
+
+function Base.sum(a::Variable)
+    backward(p_grad) = a.grad += p_grad .* ones(size(a.data))
+    Variable(sum(a.data), Set([a]), backward)
+end
+
 function Base.tanh(a::Variable)
     backward(p_grad) = begin
-        a.grad += (1. .- tanh.(a.data).^2) * p_grad
+        a.grad += (1. .- tanh.(a.data).^2) .* p_grad
     end
     Variable(tanh.(a.data), Set([a]), backward)
 end
