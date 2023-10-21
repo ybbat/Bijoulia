@@ -1,6 +1,6 @@
 module Variables
 
-export Variable
+export Variable, backpropagate
 
 mutable struct Variable
     data::Union{Array{Float64}, Float64}
@@ -54,11 +54,39 @@ mutable struct Variable
     end
 end
 
+function backpropagate(root::Variable)
+    if typeof(root) <: Array
+        fill!(root.grad, one(Float64))
+    else
+        root.grad = one(Float64)
+    end
+
+    visited::Set{Variable} = Set()
+    sorted::Array{Variable} = []
+
+    dfs(node::Variable) = begin
+        if node ∉ visited
+            push!(visited, node)
+            for child ∈ node.children
+                dfs(child)
+            end
+
+            push!(sorted, node)
+        end
+    end
+
+    dfs(root)
+    reverse!(sorted)
+    for v ∈ sorted
+        v.backward(v.grad)
+    end
+end
+
 # TODO: allow broadcasting over Variable so all this logic isnt needed for each operation
 function broadcast_dims(a, b)::Union{Array{Float64}, Float64}
     size_a = size(a)
     size_b = size(b)
-    if size_a == size_b
+    if size_a >= size_b
         return b
     end
 
@@ -87,8 +115,8 @@ function Base.:+(a::Variable, b::Variable)
         try
             broadcast_add = a.data .+ b.data
             bback_func(p_grad) = begin
-                a.grad = a.grad + broadcast_dims(a.grad, p_grad)
-                b.grad = b.grad + broadcast_dims(b.grad, p_grad)
+                a.grad = a.grad .+ broadcast_dims(a.grad, p_grad)
+                b.grad = b.grad .+ broadcast_dims(b.grad, p_grad)
             end
             Variable(broadcast_add, Set([a, b]), bback_func)
         catch
@@ -141,6 +169,13 @@ end
 function Base.:-(a::Variable)
     backward(p_grad) = a.grad -= p_grad
     Variable(-a.data, Set([a]), backward)
+end
+
+function Base.tanh(a::Variable)
+    backward(p_grad) = begin
+        a.grad += (1. .- tanh.(a.data).^2) * p_grad
+    end
+    Variable(tanh.(a.data), Set([a]), backward)
 end
 
 end # module Variables

@@ -157,3 +157,30 @@ end
         @test (-Variable([1 2 3; 4 5 6])).data == [-1. -2. -3.; -4. -5. -6.]
     end
 end
+
+@testset "backpropagate" begin
+    @testset "scalar variable reuse" begin
+        a = Variable(-2)
+        b = Variable(3)
+        c = a * b
+        d = a + b
+        e = c + d
+        backpropagate(e)
+        @test a.grad == 4.
+        @test b.grad == -1.
+        @test c.grad == 1.
+        @test d.grad == 1.
+        @test e.grad == 1.
+    end
+
+    @testset "simple matrix backprop" begin
+        x = Variable([1; 2])
+        W = Variable([-3. 0.5])
+        b = Variable([1.])
+        z = W * x + b
+        a = tanh(z)
+        backpropagate(a)
+        @test isapprox.(x.grad, [-1.26; 0.21], atol=0.01) |> all
+        @test isapprox.(W.grad, [0.42 0.84], atol=0.01) |> all
+    end
+end
