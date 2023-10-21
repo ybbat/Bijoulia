@@ -128,4 +128,19 @@ function Base.:*(a::Variable, b::Variable)
     end
 end
 
+function Base.adjoint(a::Variable)
+    backward(p_grad) = a.grad += p_grad'
+    Variable(copy(a.data'), Set([a]), backward)
+end
+
+function Base.:^(a::Variable, b::Number)
+    backward(p_grad) = a.grad += b .* p_grad .* a.data.^(b - 1)
+    Variable(a.data.^b, Set([a]), backward)
+end
+
+function Base.:-(a::Variable)
+    backward(p_grad) = a.grad -= p_grad
+    Variable(-a.data, Set([a]), backward)
+end
+
 end # module Variables
