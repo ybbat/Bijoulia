@@ -148,6 +148,8 @@ zero_grad!(v::VariableScalar) = v.grad = zero(Float64)
 struct VariableStyle <: Broadcast.BroadcastStyle end
 Base.BroadcastStyle(::Type{<:Variable}) = VariableStyle()
 
+Base.BroadcastStyle(::VariableStyle, ::Broadcast.BroadcastStyle) = VariableStyle()
+
 function Base.similar(bc::Broadcast.Broadcasted{VariableStyle}, ::Type{ElType}) where {ElType}
     if all(typeof.(bc.args) .== VariableScalar)
         Variable(zero(Float64))
@@ -167,6 +169,26 @@ end
 
 Base.broadcastable(v::Variable) = v
 
+# Swap position of "a" and "b" arguments in function
+# TODO: could probably work for more than just a, b by creation all permutations
+macro commutative(ex)
+    func_call = ex.args[1]
+    body = ex.args[2]
+    func_name, func_args... = func_call.args
+
+    indices = findall(e -> e.args[1] ∈ (:a, :b), func_args)
+    @assert length(indices) == 2
+    swapped = copy(func_args)
+    swapped[indices[1]], swapped[indices[2]] = func_args[indices[2]], func_args[indices[1]]
+
+    return quote
+        $ex
+        function $(func_name)($(swapped...))
+            $body
+        end
+    end
+end
+
 #
 # Adding
 #
@@ -178,10 +200,9 @@ function backward(::typeof(+), a::Variable, b::Variable)
     end
 end
 
-function Base.broadcasted(::VariableStyle, op::typeof(+), args...)
-    @assert length(args) == 2
-    back = backward(+, args[1], args[2])
-    Variable(args[1].data .+ args[2].data, Set([args[1], args[2]]), back)
+function Base.broadcasted(::VariableStyle, op::typeof(+), a::Variable, b::Variable)
+    back = backward(+, a, b)
+    Variable(a.data .+ b.data, Set([a, b]), back)
 end
 
 function Base.:+(a::Variable, b::Variable)
@@ -189,5 +210,24 @@ function Base.:+(a::Variable, b::Variable)
     back = backward(+, a, b)
     Variable(a.data .+ b.data, Set([a, b]), back)
 end
+
+function backward(::typeof(+), a::Variable)
+    function ret(pgrad::Union{AbstractArray,Number})
+        a.grad += unbroadcast(a, pgrad)
+    end
+end
+
+@commutative function Base.broadcasted(::VariableStyle, op::typeof(+), a::Variable, b::Union{AbstractArray,Number})
+    back = backward(+, a)
+    Variable(a.data .+ b, Set([a]), back)
+end
+
+
+@commutative function Base.:+(a::Variable, b::Union{AbstractArray,Number})
+    @assert size(a) == size(b)
+    back = backward(+, a)
+    Variable(a.data .+ b, Set([a]), back)
+end
+
 
 end # module NewVariables
