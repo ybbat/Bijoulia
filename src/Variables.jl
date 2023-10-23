@@ -93,7 +93,7 @@ function broadcast_dims(a, b)::Union{Array{Float64}, Float64}
         return b
     end
 
-    size_a = [i <= length(size_a) ? size_a[i] : 1 for i ∈ 1:length(size_b)]
+    size_a = Tuple(i <= length(size_a) ? size_a[i] : 1 for i ∈ 1:length(size_b))
 
     indices = []
     for (i, (x, y)) ∈ enumerate(collect(zip(size_a, size_b)))
