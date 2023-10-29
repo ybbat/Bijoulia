@@ -1,7 +1,8 @@
 module Bijoulia
 
 include("Variables.jl")
-using .Variables: Variable, backpropagate
+
+using .Variables: Variable, backpropagate!, zero_grads!
 
 
 abstract type Module end
@@ -16,16 +17,16 @@ mutable struct Linear <: Module
 end
 
 function forward(m::Linear, inp::Variable)::Variable
-    inp * m.params.weights + m.params.bias'
+    inp * m.params.weights .+ m.params.bias'
 end
 
 
 abstract type Activation <: Module end
 
-mutable struct Tanh <: Activation
-end
+mutable struct Tanh <: Activation end
+
 function forward(m::Tanh, inp::Variable)::Variable
-    tanh(inp)
+    tanh.(inp)
 end
 
 

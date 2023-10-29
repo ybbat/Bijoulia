@@ -139,15 +139,15 @@ end
     @testset "pow" begin
         @test (Variable(2)^2).data == 4.
         a = Variable([1 2 3; 4 5 6])
-        @test (a^2).data == [1. 4. 9.; 16. 25. 36.]
-        @test (a^3).data == [1. 8. 27.; 64. 125. 216.]
+        @test (a.^2).data == [1. 4. 9.; 16. 25. 36.]
+        @test (a.^3).data == [1. 8. 27.; 64. 125. 216.]
 
-        c = a^2
+        c = a.^2
         c.backward([1. 1. 1.; 1. 1. 1.])
         @test a.grad == [2. 4. 6.; 8. 10. 12.]
 
         a = Variable([6 8 2; 3 1 8; 3 8 3])
-        c = a ^ 3
+        c = a .^ 3
         c.backward([1. 1. 1.; 1. 1. 1.; 1. 1. 1.])
         @test a.grad == [108. 192 12.; 27. 3. 192.; 27. 192. 27.]
     end
@@ -166,7 +166,7 @@ end
         c = a * b
         d = a + b
         e = c + d
-        backpropagate(e)
+        backpropagate!(e)
         @test a.grad == 4.
         @test b.grad == -1.
         @test c.grad == 1.
@@ -180,7 +180,7 @@ end
         b = Variable([1.])
         z = W * x + b
         a = tanh(z)
-        backpropagate(a)
+        backpropagate!(a)
         @test isapprox.(x.grad, [-1.26; 0.21], atol=0.01) |> all
         @test isapprox.(W.grad, [0.42 0.84], atol=0.01) |> all
     end

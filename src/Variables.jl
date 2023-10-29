@@ -57,8 +57,8 @@ end
 Base.size(v::Variable) = size(v.data)
 Base.size(v::Variable, d::Integer) = size(v.data, d)
 Base.length(v::Variable) = length(v.data)
-Base.getindex(v::Variable, inds::Vararg{Int,N}) where {N} = v.data[inds...]
-Base.setindex!(v::Variable, val, inds::Vararg{Int,N}) where {N} = v.data[inds...] = val
+Base.getindex(v::Variable, inds...) = v.data[inds...]
+Base.setindex!(v::Variable, val, inds...)= v.data[inds...] = val
 Base.firstindex(v::Variable) = firstindex(v.data)
 Base.lastindex(v::Variable) = lastindex(v.data)
 Base.iterate(v::Variable) = iterate(v.data)
@@ -172,7 +172,7 @@ end
 Base.broadcastable(v::Variable) = v
 
 # Swap position of "a" and "b" arguments in function
-# TODO: could probably work for more than just a, b by creation all permutations
+# TODO: could probably work for more than just a, b by creating all permutations of specified arguments
 macro commutative(ex)
     func_call = ex.args[1]
     body = ex.args[2]
@@ -202,7 +202,7 @@ function backward(::typeof(+), a::Variable, b::Variable)
     end
 end
 
-function Base.broadcasted(::VariableStyle, op::typeof(+), a::Variable, b::Variable)
+function Base.broadcasted(::VariableStyle, ::typeof(+), a::Variable, b::Variable)
     back = backward(+, a, b)
     Variable(a.data .+ b.data, Set([a, b]), back)
 end
@@ -218,7 +218,7 @@ function backward(::typeof(+), a::Variable)
     end
 end
 
-@commutative function Base.broadcasted(::VariableStyle, op::typeof(+), a::Variable, b::Union{AbstractArray,Number})
+@commutative function Base.broadcasted(::VariableStyle, ::typeof(+), a::Variable, b::Union{AbstractArray,Number})
     back = backward(+, a)
     Variable(a.data .+ b, Set([a]), back)
 end
@@ -254,15 +254,122 @@ function backward(::typeof(.*), a::Variable, b::Variable)
     end
 end
 
-function Base.broadcasted(::VariableStyle, op::typeof(*), a::Variable, b::Variable)
-    back = backward(.*, a, b)
-    Variable(a.data .* b.data, Set([a, b]), back)
+function Base.broadcasted(::VariableStyle, ::typeof(*), a::Variable, b::Variable)
+    Variable(a.data .* b.data, Set([a, b]), backward(.*, a, b))
 end
 
 function Base.:*(a::Variable, b::Variable)
-    back = backward(*, a, b)
-    Variable(a.data * b.data, Set([a, b]), back)
+    Variable(a.data * b.data, Set([a, b]), backward(*, a, b))
 end
 
+@commutative function Base.broadcasted(::VariableStyle, ::typeof(*), a::Variable, b::Union{AbstractArray,Number})
+    println("test")
+    @show a
+    @show b
+    back = backward(*, a)
+    Variable(a.data .* b, Set([a]), back)
+end
+
+
+@commutative function Base.:*(a::Variable, b::Union{AbstractArray,Number})
+    println("test2")
+    @show a
+    @show b
+    back = backward(*, a)
+    Variable(a.data * b, Set([a]), back)
+end
+
+#
+# Transpose
+#
+function Base.adjoint(a::Variable)
+    Variable(collect(a.data'), Set([a]), p_grad -> a.grad += p_grad')
+end
+
+#
+# Negate
+#
+function Base.:-(a::Variable)
+    Variable(-a.data, Set([a]), p_grad -> a.grad -= p_grad)
+end
+
+#
+# Subtract
+#
+function Base.:-(a::Variable, b::Variable)
+    a + (-b)
+end
+
+function Base.broadcasted(::VariableStyle, ::typeof(-), a::Variable, b::Variable)
+    a .+ (-b)
+end
+
+@commutative function Base.:-(a::Variable, b::Number)
+    a + (-b)
+end
+
+@commutative function Base.broadcasted(::VariableStyle, op::typeof(-), a::Variable, b::Number)
+    a .+ (-b)
+end
+
+#
+# Power
+#
+function backward(::typeof(^), a::Variable, b::Number)
+    function ret(pgrad::Union{AbstractArray,Number})
+        a.grad += b .* pgrad .* a.data.^(b .- 1)
+    end
+end
+
+function Base.:^(a::VariableScalar, b::Number)
+    back = backward(^, a, b)
+    Variable(a.data^b, Set([a]), back)
+end
+
+function Base.broadcasted(::VariableStyle, ::typeof(^), a::Variable, b::Number)
+    back = backward(^, a, b)
+    Variable(a.data.^b, Set([a]), back)
+end
+
+# Needed when exponent is an int literal due to funky stuff (official term) for compile time specialization
+deval(::Base.RefValue{Base.Val{n}}) where n = n
+function Base.broadcasted(::VariableStyle, ::typeof(Base.literal_pow), op, a::Variable, b::Base.RefValue)
+    result = broadcast(Base.literal_pow, ^, a.data, b)
+    back = backward(^, a, deval(b))
+    Variable(result, Set([a]), back)
+end
+
+#
+# Tanh
+#
+function backward(::typeof(tanh), a::Variable)
+    function ret(pgrad::Union{AbstractArray,Number})
+        a.grad += (1. .- tanh.(a.data).^2 .* pgrad)
+    end
+end
+
+function Base.tanh(a::Variable)
+    back = backward(tanh, a)
+    Variable(tanh(a.data), Set([a]), back)
+end
+
+function Base.broadcasted(::VariableStyle, ::typeof(tanh), a::Variable)
+    back = backward(tanh, a)
+    Variable(tanh.(a.data), Set([a]), back)
+end
+
+#
+# Sum
+#
+function backward(::typeof(sum), a::Variable)
+    function ret(pgrad::Union{AbstractArray,Number})
+        a.grad .+= pgrad
+    end
+end
+
+function Base.sum(a::Variable)
+    back = backward(sum, a)
+    Variable(sum(a.data), Set([a]), back)
+end
 
 end # module Variables
