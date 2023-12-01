@@ -1,6 +1,6 @@
 module Variables
 
-export Variable, backpropagate!, zero_grads!
+export Variable, backpropagate!, zero_grads!, relu
 
 #
 # Variable definitions and constructors
@@ -58,7 +58,7 @@ Base.size(v::Variable) = size(v.data)
 Base.size(v::Variable, d::Integer) = size(v.data, d)
 Base.length(v::Variable) = length(v.data)
 Base.getindex(v::Variable, inds...) = v.data[inds...]
-Base.setindex!(v::Variable, val, inds...)= v.data[inds...] = val
+Base.setindex!(v::Variable, val, inds...) = v.data[inds...] = val
 Base.firstindex(v::Variable) = firstindex(v.data)
 Base.lastindex(v::Variable) = lastindex(v.data)
 Base.iterate(v::Variable) = iterate(v.data)
@@ -104,8 +104,8 @@ end
 #
 
 function dfs(root::Variable,
-             visited::Set{Variable}=Set{Variable}(),
-             sorted::Array{Variable}=Array{Variable}([]))
+    visited::Set{Variable}=Set{Variable}(),
+    sorted::Array{Variable}=Array{Variable}([]))
     if root ∈ visited
         return
     end
@@ -263,18 +263,12 @@ function Base.:*(a::Variable, b::Variable)
 end
 
 @commutative function Base.broadcasted(::VariableStyle, ::typeof(*), a::Variable, b::Union{AbstractArray,Number})
-    println("test")
-    @show a
-    @show b
     back = backward(*, a)
     Variable(a.data .* b, Set([a]), back)
 end
 
 
 @commutative function Base.:*(a::Variable, b::Union{AbstractArray,Number})
-    println("test2")
-    @show a
-    @show b
     back = backward(*, a)
     Variable(a.data * b, Set([a]), back)
 end
@@ -317,7 +311,7 @@ end
 #
 function backward(::typeof(^), a::Variable, b::Number)
     function ret(pgrad::Union{AbstractArray,Number})
-        a.grad += b .* pgrad .* a.data.^(b .- 1)
+        a.grad += b .* pgrad .* a.data .^ (b .- 1)
     end
 end
 
@@ -328,11 +322,11 @@ end
 
 function Base.broadcasted(::VariableStyle, ::typeof(^), a::Variable, b::Number)
     back = backward(^, a, b)
-    Variable(a.data.^b, Set([a]), back)
+    Variable(a.data .^ b, Set([a]), back)
 end
 
-# Needed when exponent is an int literal due to funky stuff (official term) for compile time specialization
-deval(::Base.RefValue{Base.Val{n}}) where n = n
+# Needed when exponent is an int literal due to funky stuff for compile time specialization
+deval(::Base.RefValue{Base.Val{n}}) where {n} = n
 function Base.broadcasted(::VariableStyle, ::typeof(Base.literal_pow), op, a::Variable, b::Base.RefValue)
     result = broadcast(Base.literal_pow, ^, a.data, b)
     back = backward(^, a, deval(b))
@@ -344,7 +338,7 @@ end
 #
 function backward(::typeof(tanh), a::Variable)
     function ret(pgrad::Union{AbstractArray,Number})
-        a.grad += (1. .- tanh.(a.data).^2 .* pgrad)
+        a.grad += (1.0 .- tanh.(a.data) .^ 2 .* pgrad)
     end
 end
 
@@ -356,6 +350,25 @@ end
 function Base.broadcasted(::VariableStyle, ::typeof(tanh), a::Variable)
     back = backward(tanh, a)
     Variable(tanh.(a.data), Set([a]), back)
+end
+
+#
+# ReLU
+#
+function relu(a::T) where {T<:Variable}
+    back = backward(relu, a)
+    Variable(max(a.data, 0), Set([a]), back)
+end
+
+function Base.broadcasted(::VariableStyle, ::typeof(relu), a::Variable)
+    back = backward(relu, a)
+    Variable(max.(a.data, 0), Set([a]), back)
+end
+
+function backward(::typeof(relu), a::Variable)
+    function ret(pgrad::Union{AbstractArray,Number})
+        a.grad += (a.data .> 0) .* pgrad
+    end
 end
 
 #
